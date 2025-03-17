@@ -1,0 +1,65 @@
+{
+  "summary": {
+    "total": 8,
+    "errors": 3,
+    "warnings": 5
+  },
+  "violations": [
+    {
+      "line": null,
+      "message": "File exceeds maximum size limit\n   Current size: 1188 lines\nRecommended max: 1000 lines",
+      "file": "/Users/madsen/Developer/Idyll/ex_code_audit/deps/nimble_parsec/lib/nimble_parsec/compiler.ex",
+      "level": "warning",
+      "rule": "file_size"
+    },
+    {
+      "line": null,
+      "message": "File exceeds maximum size limit\n   Current size: 2127 lines\nRecommended max: 1000 lines",
+      "file": "/Users/madsen/Developer/Idyll/ex_code_audit/deps/nimble_parsec/lib/nimble_parsec.ex",
+      "level": "warning",
+      "rule": "file_size"
+    },
+    {
+      "line": null,
+      "message": "File exceeds maximum size limit\n   Current size: 1397 lines\nRecommended max: 1000 lines",
+      "file": "/Users/madsen/Developer/Idyll/ex_code_audit/deps/makeup/lib/makeup/styles/html/style_map.ex",
+      "level": "warning",
+      "rule": "file_size"
+    },
+    {
+      "line": null,
+      "message": "Schema file found in incorrect location\n   Expected location: lib/ex_code_audit/schema/*.ex",
+      "file": "/Users/madsen/Developer/Idyll/ex_code_audit/test/code_audit/analyzers/schema_test.exs",
+      "level": "error",
+      "rule": "schema_location"
+    },
+    {
+      "line": null,
+      "message": "Schema file found in incorrect location\n   Expected location: lib/ex_code_audit/schema/*.ex",
+      "file": "/Users/madsen/Developer/Idyll/ex_code_audit/test/code_audit/analyzers/live_view_test.exs",
+      "level": "error",
+      "rule": "schema_location"
+    },
+    {
+      "line": null,
+      "message": "Schema file found in incorrect location\n   Expected location: lib/ex_code_audit/schema/*.ex",
+      "file": "/Users/madsen/Developer/Idyll/ex_code_audit/lib/code_audit/analyzers/schema.ex",
+      "level": "error",
+      "rule": "schema_location"
+    },
+    {
+      "line": null,
+      "message": "LiveView missing labeled sections\n   Missing sections: [\"LIFECYCLE CALLBACKS, EVENT HANDLERS, RENDERING\"]",
+      "file": "/Users/madsen/Developer/Idyll/ex_code_audit/deps/earmark_parser/lib/earmark_parser/ast_renderer.ex",
+      "level": "warning",
+      "rule": "live_view_sections"
+    },
+    {
+      "line": null,
+      "message": "LiveView missing labeled sections\n   Missing sections: [\"LIFECYCLE CALLBACKS, EVENT HANDLERS, RENDERING\"]",
+      "file": "/Users/madsen/Developer/Idyll/ex_code_audit/deps/excoveralls/lib/excoveralls/html/view.ex",
+      "level": "warning",
+      "rule": "live_view_sections"
+    }
+  ]
+}
