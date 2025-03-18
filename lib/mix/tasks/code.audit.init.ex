@@ -45,6 +45,7 @@ defmodule Mix.Tasks.Code.Audit.Init do
         required: ["LIFECYCLE CALLBACKS", "EVENT HANDLERS", "RENDERING"],
         check_external_templates: true,
         check_component_structure: true,
+        excluded_rules: [],
         violation_level: :warning
       },
       file_size: %{

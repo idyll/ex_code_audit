@@ -56,6 +56,8 @@ rules:
       - "RENDERING"
     check_external_templates: true
     check_component_structure: true
+    excluded_rules:
+      - "component_props_docs"
     violation_level: warning
   
   file_size:
@@ -114,6 +116,7 @@ excluded_paths:
       "required": ["LIFECYCLE CALLBACKS", "EVENT HANDLERS", "RENDERING"],
       "check_external_templates": true,
       "check_component_structure": true,
+      "excluded_rules": ["component_props_docs"],
       "violation_level": "warning"
     },
     "file_size": {
@@ -179,6 +182,7 @@ config :ex_code_audit,
       required: ["LIFECYCLE CALLBACKS", "EVENT HANDLERS", "RENDERING"],
       check_external_templates: true,
       check_component_structure: true,
+      excluded_rules: ["component_props_docs"],
       violation_level: :warning
     ],
     

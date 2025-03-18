@@ -263,6 +263,12 @@ defmodule ExCodeAudit.Analyzers.LiveView do
     )
   end
 
+  # Check if a rule is excluded in the configuration
+  defp rule_excluded?(rule_name, config) do
+    excluded_rules = config[:excluded_rules] || []
+    rule_name in excluded_rules
+  end
+
   # Check if the LiveView uses external templates
   defp uses_external_templates?(content) do
     # Pattern for external template render calls
@@ -356,7 +362,7 @@ defmodule ExCodeAudit.Analyzers.LiveView do
         end
 
       # Check for documented props
-      if !has_props_docs do
+      if !has_props_docs && !rule_excluded?("component_props_docs", config) do
         [
           create_component_violation(
             file_path,

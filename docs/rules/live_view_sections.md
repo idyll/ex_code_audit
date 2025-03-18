@@ -34,6 +34,7 @@ live_view_sections: [
 | `required` | list | `["LIFECYCLE CALLBACKS", "EVENT HANDLERS", "RENDERING"]` | List of required section labels |
 | `check_external_templates` | boolean | `true` | Whether to check for external templates usage |
 | `check_component_structure` | boolean | `true` | Whether to check component structure |
+| `excluded_rules` | list | `[]` | List of specific rules to exclude (e.g., `["component_props_docs"]`) |
 | `violation_level` | atom | `:warning` | Level for violations (`:warning` or `:error`) |
 
 ## How It Works
@@ -101,6 +102,16 @@ When `check_component_structure` is enabled, components are also checked for:
 1. **Embedded HEEx Templates** - Components should use embedded templates
 2. **Update Callback** - Stateful components should include an update callback
 3. **Documented Props** - Component properties should be documented
+
+You can selectively disable certain component checks without disabling all of them by using the `excluded_rules` option:
+
+```yaml
+live_view_sections:
+  excluded_rules:
+    - component_props_docs
+```
+
+This will disable only the props documentation check while keeping other component structure checks enabled.
 
 Documentation can be in any of these formats:
 
