@@ -13,6 +13,46 @@
 9. CI integration with exit codes
 10. Compiler warnings detection
 
+## Auto-Fix Features
+
+ExCodeAudit includes the ability to automatically fix certain issues it detects. Currently, the tool supports:
+
+### LiveView Section Labels
+
+The tool can automatically add missing LiveView section labels:
+
+```bash
+# Auto-fix LiveView section issues
+mix code.audit --fix
+
+# Preview the fixes without applying them
+mix code.audit --fix --preview
+```
+
+When using the `--preview` option, the tool will display:
+
+1. The files with issues
+2. A diff-style preview of the changes that will be made
+3. The exact line numbers where changes will be applied
+4. File paths with line numbers (e.g., `lib/my_app_web/live/user_live.ex:42`) for easy navigation
+
+Example preview output:
+
+```
+## Insert LIFECYCLE CALLBACKS at line 6:
+  3: 
+  4:   def mount(_params, _session, socket) do
+  5:     {:ok, assign(socket, count: 0)}
+  6:   end
++ 6: # LIFECYCLE CALLBACKS
+  lib/my_app_web/live/user_live.ex:6
+  6: 
+  7:   def handle_event("increment", _, socket) do
+  8:     {:noreply, assign(socket, count: socket.assigns.count + 1)}
+```
+
+This format makes it easy to see exactly where changes will be made and directly copy the file path with line number for navigation in your editor.
+
 ## Installation
 
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed
@@ -49,6 +89,9 @@ The following command-line options are available:
 - `--only=<rule1,rule2>`: Only run specific rules (comma-separated list)
 - `--skip-compile`: Skip checking for compiler warnings
 - `--with-coverage`: Check test coverage against the configured minimum percentage
+- `--fix`: Auto-fix certain issues (currently supports LiveView section labels)
+- `--preview`: Preview fixes without applying them (use with `--fix`)
+- `--force`: Force recreation of headers even if they exist (use with `--fix`)
 
 Examples:
 
@@ -73,6 +116,15 @@ mix code.audit --skip-compile
 
 # Include test coverage checks
 mix code.audit --with-coverage
+
+# Auto-fix LiveView section issues
+mix code.audit --fix
+
+# Preview the fixes without applying them
+mix code.audit --fix --preview
+
+# Force recreation of sections even if they exist
+mix code.audit --fix --force
 ```
 
 ### Configuration
@@ -379,7 +431,13 @@ Checks for proper factory usage in tests.
 
 ## Documentation
 
-Documentation is available at [https://hexdocs.pm/ex_code_audit](https://hexdocs.pm/ex_code_audit).
+Comprehensive documentation is available in the [docs](docs/) directory:
+
+- [Usage Guide](docs/usage.md) - Detailed usage instructions and examples
+- [Configuration Guide](docs/configuration.md) - How to configure ExCodeAudit
+- [Rule Descriptions](docs/rules/index.md) - Details about each rule
+
+For hex documentation, visit [https://hexdocs.pm/ex_code_audit](https://hexdocs.pm/ex_code_audit).
 
 ## Project Structure
 
@@ -409,271 +467,3 @@ lib/
 │       └── code.audit.init.ex # Config generation task
 └── code_audit.ex           # Package entrypoint
 ```
-
-## Development Process
-
-### Phase 1: Setup and Core Infrastructure (2-3 days)
-
-- [x] Create new Mix project with proper dependencies
-- [x] Set up the project structure
-- [x] Define the core configuration system
-- [x] Create violation tracking system
-- [x] Implement basic Mix task
-- [x] Set up testing framework
-
-#### Technical Details
-
-- Use `nimble_parsec` for file parsing
-- Use `file_system` for efficient file traversal
-- Define a `Rule` behavior for all rules to implement
-
-### Phase 2: Basic Analyzers (3-4 days)
-
-- [x] Implement file structure analyzer
-  - [x] Directory structure validation
-  - [x] File naming convention checking
-- [x] Implement file size analyzer
-  - [x] Line count tracking
-  - [x] File size warnings
-- [x] Implement basic reporters
-  - [x] Console reporter with color coding
-  - [x] JSON reporter for machine consumption
-
-#### Technical Details
-
-- Use pattern matching to identify file types
-- Implement efficient file traversal that skips directories like `_build` and `deps`
-- Create clear violation messages with file locations
-
-### Phase 3: Code Content Analysis (4-5 days)
-
-- [x] Implement schema analyzer
-  - [x] Detect schema definitions
-  - [x] Verify schema placement
-  - [x] Check for Repo calls in schema files
-- [x] Implement LiveView analyzer
-  - [x] Detect section labels
-  - [x] Check for external templates
-  - [x] Verify component structure
-- [x] Implement repository call analyzer
-  - [x] Detect Repo calls
-  - [x] Verify they're in the correct modules
-
-#### Technical Details
-
-- Use the Elixir `Code` module to parse and analyze AST
-- Create pattern matchers for common Elixir constructs
-- Implement efficient caching to avoid re-analyzing files
-
-### Phase 4: Testing Analysis (2-3 days)
-
-- [x] Implement test coverage analyzer
-  - [x] Check test file existence for modules
-  - [x] Integrate with existing coverage tools
-- [x] Implement factory usage checker
-  - [x] Detect fixtures vs factories
-  - [x] Verify factory naming
-
-#### Technical Details
-
-- Parse existing coverage reports
-- Integrate with `excoveralls` if available
-- Scan for fixture patterns in test files
-
-### Phase 5: Configuration and Customization (2-3 days)
-
-- [x] Implement configuration file system
-  - [x] Allow YAML configuration files
-  - [x] Allow JSON configuration files
-  - [x] Support global and project-specific config files
-- [ ] Create rule customization system
-  - [ ] Allow rule disabling
-  - [ ] Support custom thresholds
-
-#### Technical Details
-
-- Use YAML or JSON for configuration
-- Support both global and project-level configs
-- Implement inheritance and overriding
-
-### Phase 6: CI Integration and Polish (3-4 days)
-
-- [ ] Add GitHub Actions integration
-  - [ ] Output in GitHub annotation format
-- [ ] Implement strict mode
-  - [ ] Return proper exit codes
-  - [ ] Allow severity level configuration
-- [ ] Add comprehensive documentation
-  - [ ] Usage examples
-  - [ ] Configuration options
-  - [ ] Rule descriptions
-
-#### Technical Details
-
-- Follow GitHub Actions annotation format
-- Create proper exit codes based on violation severity
-- Generate complete HexDocs
-
-### Phase 7: Testing and Release (2-3 days)
-
-- [ ] Comprehensive test suite
-  - [ ] Unit tests for all analyzers
-  - [ ] Integration tests with sample projects
-- [ ] Performance optimization
-  - [ ] Improve file traversal speed
-  - [ ] Implement caching
-- [ ] Publish to Hex.pm
-  - [ ] Package documentation
-  - [ ] Version strategy
-
-## Implementation Details
-
-### Configuration Example
-
-```elixir
-# In config/config.exs
-config :elixir_code_audit,
-  rules: [
-    # Schema rules
-    schema_location: [
-      path: "lib/:app_name/schemas/*.ex",
-      violation_level: :error
-    ],
-    schema_content: [
-      excludes: ["Repo."],
-      violation_level: :warning
-    ],
-    
-    # LiveView rules
-    live_view_sections: [
-      required: ["LIFECYCLE CALLBACKS", "EVENT HANDLERS", "RENDERING"],
-      violation_level: :warning
-    ],
-    
-    # File size rules
-    file_size: [
-      max_lines: 1000,
-      warning_at: 920,
-      violation_level: :warning
-    ],
-    
-    # Testing rules
-    test_coverage: [
-      min_percentage: 90,
-      violation_level: :error
-    ],
-    fixture_usage: [
-      allowed: false,
-      violation_level: :error
-    ]
-  ],
-  
-  # Paths to exclude from analysis
-  excluded_paths: [
-    "deps/**",
-    "_build/**",
-    "priv/static/**"
-  ]
-```
-
-### Example Mix Task Usage
-
-```bash
-# Basic usage
-mix code.audit
-
-# Strict mode (errors cause non-zero exit)
-mix code.audit --strict
-
-# Specific rule categories
-mix code.audit --only=schema,live_view
-
-# Output format
-mix code.audit --format=json
-
-# Output to file
-mix code.audit --output=audit_results.json
-
-# Verbose mode
-mix code.audit --verbose
-```
-
-### Example Output
-
-```
-ElixirCodeAudit v0.1.0
-
-Scanning project...
-
-❌ ERROR: Schema file found in incorrect location
-   File: lib/my_app/user.ex
-   Expected location: lib/my_app/schemas/user.ex
-
-⚠️ WARNING: File exceeds recommended size limit
-   File: lib/my_app_web/live/dashboard_live/index.ex
-   Current size: 1243 lines
-   Recommended max: 1000 lines
-
-⚠️ WARNING: LiveView missing labeled sections
-   File: lib/my_app_web/live/user_live/show.ex
-   Missing sections: ["INFO HANDLERS"]
-
-⚠️ WARNING: Repo call found outside schema operation module
-   File: lib/my_app/user.ex:45
-   Repo calls should be in lib/my_app/user/creator.ex or similar
-
-❌ ERROR: No factory found for test data generation
-   Expected: test/support/factory.ex
-
-Summary:
-  2 errors
-  3 warnings
-  78 files analyzed
-  
-Run with --details for more information on each violation.
-```
-
-## Technology Stack
-
-- **Elixir**: Core language
-- **Mix**: Build tool and task runner
-- **nimble_parsec**: For efficient text parsing
-- **file_system**: For file watching capabilities
-- **yaml_elixir**: For configuration file parsing
-- **ex_doc**: For documentation generation
-- **excoveralls**: For coverage integration
-
-## Timeline
-
-- **Phase 1-2**: 5-7 days
-- **Phase 3-4**: 6-8 days
-- **Phase 5-6**: 5-7 days
-- **Phase 7**: 2-3 days
-- **Total**: 18-25 days
-
-## Future Enhancements
-
-- **Auto-fix mode**: Automatically correct simple violations
-- **Editor integration**: VSCode and other editor plugins
-- **Custom rule creation**: API for creating custom rules
-- **Project templates**: Generate compliant project templates
-- **Migration assistant**: Help migrate existing projects
-- **Dashboard**: Web UI for visualizing compliance over time
-
-## Success Metrics
-
-1. Successfully detects all violations of the code organization rules
-2. Performance suitable for CI environments (under 30 seconds for medium projects)
-3. Clear, actionable output that guides developers to fix issues
-4. Configurable to match specific project requirements
-5. Easy integration with existing workflows and CI pipelines
-
-## Risks and Mitigations
-
-| Risk | Mitigation |
-|------|------------|
-| False positives | Extensive testing with real projects, configurable thresholds |
-| Performance issues | Implement efficient file traversal, caching, incremental analysis |
-| AST analysis complexity | Start with simpler pattern matching, gradually add AST analysis |
-| Configuration complexity | Well-documented defaults, validation of config options |
-| Tool adoption resistance | Make the tool helpful rather than punitive, provide clear explanations |

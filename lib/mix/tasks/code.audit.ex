@@ -33,6 +33,15 @@ defmodule Mix.Tasks.Code.Audit do
 
       # Show details
       mix code.audit --details
+
+      # Auto-fix issues
+      mix code.audit --fix
+
+      # Preview fixes without applying them
+      mix code.audit --fix --preview
+
+      # Force recreate headers even if they exist
+      mix code.audit --fix --force
   """
 
   use Mix.Task
@@ -50,7 +59,10 @@ defmodule Mix.Tasks.Code.Audit do
     skip_compile: :boolean,
     with_coverage: :boolean,
     scan: :string,
-    details: :boolean
+    details: :boolean,
+    fix: :boolean,
+    preview: :boolean,
+    force: :boolean
   ]
 
   @impl true
@@ -88,12 +100,197 @@ defmodule Mix.Tasks.Code.Audit do
         violations
       end
 
-    # Report the results based on the format option
-    report_results(violations, config, opts)
+    # Auto-fix issues if requested
+    if opts[:fix] do
+      auto_fix_violations(violations, config, opts)
+    end
+
+    # Report the results based on the format option, but only if not in fix mode or in preview mode
+    unless opts[:fix] && !opts[:preview] do
+      report_results(violations, config, opts)
+    end
 
     # Exit with non-zero code if in strict mode and there are errors
     if opts[:strict] && Runner.has_errors?(violations) do
       System.halt(1)
+    end
+  end
+
+  # Auto-fix violations if possible
+  defp auto_fix_violations(violations, config, opts) do
+    # For now, only support fixing LiveView section labels
+    liveview_violations =
+      violations
+      |> Enum.filter(fn violation ->
+        violation.rule == :live_view_sections &&
+          String.contains?(violation.message, "LiveView missing labeled sections")
+      end)
+
+    if Enum.empty?(liveview_violations) do
+      Mix.shell().info("No fixable violations found.")
+    else
+      if !opts[:preview] do
+        Mix.shell().info(
+          "\n#{IO.ANSI.bright()}#{IO.ANSI.blue()}Fixing LiveView section issues:#{IO.ANSI.reset()}"
+        )
+      end
+
+      # Only preview the changes if --preview is specified
+      if opts[:preview] do
+        preview_fixes(liveview_violations, config)
+      else
+        # Apply the fixes
+        apply_fixes(liveview_violations, config, opts[:force])
+      end
+    end
+  end
+
+  # Preview fixes without applying them
+  defp preview_fixes(violations, config) do
+    Mix.shell().info("\nPreview of fixes:")
+
+    Enum.each(violations, fn violation ->
+      file_path = violation.file
+      Mix.shell().info("\n#{IO.ANSI.bright()}File: #{file_path}#{IO.ANSI.reset()}")
+
+      # Read the file content
+      case File.read(file_path) do
+        {:ok, content} ->
+          # Get the required sections from the rule config
+          rule_config = Config.get_rule(config, :live_view_sections)
+          _required_sections = rule_config[:required] || []
+
+          # Generate the fixed content
+          sections_to_add = find_missing_sections(violation)
+
+          {_, preview} =
+            ExCodeAudit.Fixers.LiveView.fix_sections(
+              content,
+              sections_to_add,
+              preview: true,
+              file_path: file_path
+            )
+
+          # Show the preview with proper colors
+          formatted_preview = format_diff_preview(preview)
+          Mix.shell().info(formatted_preview)
+
+        {:error, reason} ->
+          Mix.shell().error("  Could not read file: #{reason}")
+      end
+    end)
+
+    Mix.shell().info("\nRun without --preview to apply these changes.")
+  end
+
+  # Format the diff preview with colors
+  defp format_diff_preview(preview) do
+    preview
+    |> String.split("\n")
+    |> Enum.map(fn line ->
+      cond do
+        String.starts_with?(line, "+") ->
+          "#{IO.ANSI.green()}#{line}#{IO.ANSI.reset()}"
+
+        String.starts_with?(line, "##") ->
+          "#{IO.ANSI.cyan()}#{line}#{IO.ANSI.reset()}"
+
+        String.starts_with?(line, "Preview changes:") ->
+          "#{IO.ANSI.bright()}#{line}#{IO.ANSI.reset()}"
+
+        true ->
+          line
+      end
+    end)
+    |> Enum.join("\n")
+  end
+
+  # Apply fixes to the violations
+  defp apply_fixes(violations, config, force) do
+    fixed_count = 0
+
+    fixed_count =
+      Enum.reduce(violations, fixed_count, fn violation, count ->
+        file_path = violation.file
+
+        # Read the file content
+        case File.read(file_path) do
+          {:ok, content} ->
+            # Get the required sections
+            rule_config = Config.get_rule(config, :live_view_sections)
+            _required_sections = rule_config[:required] || []
+
+            # Get sections to add
+            sections_to_add = find_missing_sections(violation)
+
+            # Try to fix the file
+            case ExCodeAudit.Fixers.LiveView.fix_sections(content, sections_to_add, force: force) do
+              {:ok, fixed_content} ->
+                # Write the fixed content back to the file
+                case File.write(file_path, fixed_content) do
+                  :ok ->
+                    sections_str = Enum.join(sections_to_add, ", ")
+
+                    Mix.shell().info(
+                      "  #{IO.ANSI.green()}✓#{IO.ANSI.reset()} #{file_path} #{IO.ANSI.bright()}(added: #{sections_str})#{IO.ANSI.reset()}"
+                    )
+
+                    count + 1
+
+                  {:error, reason} ->
+                    Mix.shell().error(
+                      "  #{IO.ANSI.red()}✗#{IO.ANSI.reset()} #{file_path}: Could not write to file: #{reason}"
+                    )
+
+                    count
+                end
+
+              {:error, reason} ->
+                Mix.shell().error("  #{IO.ANSI.red()}✗#{IO.ANSI.reset()} #{file_path}: #{reason}")
+                count
+            end
+
+          {:error, reason} ->
+            Mix.shell().error(
+              "  #{IO.ANSI.red()}✗#{IO.ANSI.reset()} #{file_path}: Could not read file: #{reason}"
+            )
+
+            count
+        end
+      end)
+
+    if fixed_count > 0 do
+      Mix.shell().info(
+        "\n#{IO.ANSI.green()}✓#{IO.ANSI.reset()} #{IO.ANSI.bright()}Fixed #{fixed_count} file(s).#{IO.ANSI.reset()}"
+      )
+    else
+      Mix.shell().info(
+        "\n#{IO.ANSI.yellow()}⚠#{IO.ANSI.reset()} #{IO.ANSI.bright()}No files were fixed.#{IO.ANSI.reset()}"
+      )
+    end
+  end
+
+  # Find the missing sections from a violation message
+  defp find_missing_sections(violation) do
+    message = violation.message
+
+    # Extract the missing sections from the message
+    # The format is "Missing sections: [\"SECTION1\", \"SECTION2\", \"SECTION3\"]"
+    case Regex.run(~r/Missing sections: \[(.*?)\]/, message) do
+      [_, sections_str] ->
+        sections_str
+        |> String.split(",")
+        |> Enum.map(fn section ->
+          # Remove quotes and trim
+          section
+          |> String.trim()
+          |> String.replace(~r/^"/, "")  # Remove leading quote
+          |> String.replace(~r/"$/, "")  # Remove trailing quote
+        end)
+
+      _ ->
+        # Fallback to a default list of common sections
+        ["LIFECYCLE CALLBACKS", "EVENT HANDLERS", "RENDERING"]
     end
   end
 

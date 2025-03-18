@@ -17,7 +17,7 @@ defmodule ExCodeAudit.Analyzers.LiveViewTest do
   end
 
   describe "check/3" do
-    test "identifies LiveView files" do
+    test "identifies LiveView files with missing sections" do
       content = """
       defmodule MyAppWeb.UserLive.Index do
         use MyAppWeb, :live_view
@@ -35,6 +35,10 @@ defmodule ExCodeAudit.Analyzers.LiveViewTest do
           <div>Hello World</div>
           \"\"\"
         end
+
+        def handle_event("save", %{"user" => user_params}, socket) do
+          {:noreply, socket}
+        end
       end
       """
 
@@ -43,7 +47,8 @@ defmodule ExCodeAudit.Analyzers.LiveViewTest do
         violation_level: :warning
       }
 
-      # Test with a LiveView file missing a required section
+      # Test with a LiveView file missing the EVENT HANDLERS section
+      # for a function that actually exists
       violations = LiveView.check("lib/my_app_web/live/user_live/index.ex", content, config)
 
       assert length(violations) == 1
@@ -53,6 +58,63 @@ defmodule ExCodeAudit.Analyzers.LiveViewTest do
       assert violation.file == "lib/my_app_web/live/user_live/index.ex"
       assert String.contains?(violation.message, "LiveView missing labeled sections")
       assert String.contains?(violation.message, "EVENT HANDLERS")
+    end
+
+    test "recognizes LiveView file containing ToucanWeb pattern" do
+      # This test mimics the user's real file structure
+      content = """
+      defmodule ToucanWeb.UserForgotPasswordLive do
+        use ToucanWeb, :live_view
+
+        alias Toucan.Accounts
+
+        def render(assigns) do
+          ~H\"\"\"
+          <div class="mx-auto max-w-sm">
+            <.header class="text-center">
+              Forgot your password?
+              <:subtitle>We'll send a password reset link to your inbox</:subtitle>
+            </.header>
+          </div>
+          \"\"\"
+        end
+
+        def mount(_params, _session, socket) do
+          {:ok, assign(socket, form: to_form(%{}, as: "user"))}
+        end
+
+        def handle_event("send_email", %{"user" => %{"email" => email}}, socket) do
+          if user = Accounts.get_user_by_email(email) do
+            Accounts.deliver_user_reset_password_instructions(
+              user,
+              fn token -> url(~p"/users/reset_password/\#{token}") end
+            )
+          end
+
+          info =
+            "If your email is in our system, you will receive instructions to reset your password shortly."
+
+          {:noreply, socket |> put_flash(:info, info) |> redirect(to: ~p"/")}
+        end
+      end
+      """
+
+      config = %{
+        required: ["LIFECYCLE CALLBACKS", "EVENT HANDLERS", "RENDERING"],
+        violation_level: :warning
+      }
+
+      violations = LiveView.check("lib/toucan_web/live/user_forgot_password_live.ex", content, config)
+
+      assert length(violations) == 1
+      [violation] = violations
+      assert violation.level == :warning
+      assert violation.rule == :live_view_sections
+      assert violation.file == "lib/toucan_web/live/user_forgot_password_live.ex"
+      assert String.contains?(violation.message, "LiveView missing labeled sections")
+      assert String.contains?(violation.message, "LIFECYCLE CALLBACKS")
+      assert String.contains?(violation.message, "EVENT HANDLERS")
+      assert String.contains?(violation.message, "RENDERING")
     end
 
     test "ignores non-LiveView files" do
@@ -78,7 +140,7 @@ defmodule ExCodeAudit.Analyzers.LiveViewTest do
       assert LiveView.check("lib/my_app/schema/user.ex", content, config) == []
     end
 
-    test "accepts LiveView files with all required sections" do
+    test "accepts LiveView files with all required sections for existing functions" do
       content = """
       defmodule MyAppWeb.UserLive.Index do
         use MyAppWeb, :live_view
@@ -110,8 +172,82 @@ defmodule ExCodeAudit.Analyzers.LiveViewTest do
         violation_level: :warning
       }
 
-      # Test with a LiveView file containing all required sections
+      # Test with a LiveView file containing all required sections for existing functions
       assert LiveView.check("lib/my_app_web/live/user_live/index.ex", content, config) == []
+    end
+
+    test "doesn't require sections for functions that don't exist" do
+      content = """
+      defmodule MyAppWeb.UserLive.Index do
+        use MyAppWeb, :live_view
+
+        # LIFECYCLE CALLBACKS
+
+        def mount(_params, _session, socket) do
+          {:ok, socket}
+        end
+
+        # RENDERING
+
+        def render(assigns) do
+          ~H\"\"\"
+          <div>Hello World</div>
+          \"\"\"
+        end
+      end
+      """
+
+      config = %{
+        required: ["LIFECYCLE CALLBACKS", "EVENT HANDLERS", "RENDERING"],
+        violation_level: :warning
+      }
+
+      # This LiveView has no event handler functions, so
+      # the EVENT HANDLERS section should not be required
+      violations = LiveView.check("lib/my_app_web/live/user_live/index.ex", content, config)
+      assert violations == []
+    end
+
+    test "requires sections based on function presence" do
+      content = """
+      defmodule MyAppWeb.UserLive.Index do
+        use MyAppWeb, :live_view
+
+        def mount(_params, _session, socket) do
+          {:ok, socket}
+        end
+
+        def handle_params(_params, _uri, socket) do
+          {:noreply, socket}
+        end
+
+        def handle_event("save", %{"user" => user_params}, socket) do
+          {:noreply, socket}
+        end
+
+        def render(assigns) do
+          ~H\"\"\"
+          <div>Hello World</div>
+          \"\"\"
+        end
+      end
+      """
+
+      config = %{
+        required: ["LIFECYCLE CALLBACKS", "EVENT HANDLERS", "RENDERING"],
+        violation_level: :warning
+      }
+
+      # This LiveView has all types of functions but no sections
+      violations = LiveView.check("lib/my_app_web/live/user_live/index.ex", content, config)
+
+      assert length(violations) == 1
+      [violation] = violations
+      assert String.contains?(violation.message, "LiveView missing labeled sections")
+      # Should identify all three missing sections since functions of all types exist
+      assert String.contains?(violation.message, "LIFECYCLE CALLBACKS")
+      assert String.contains?(violation.message, "EVENT HANDLERS")
+      assert String.contains?(violation.message, "RENDERING")
     end
 
     test "detects external templates in LiveView files" do

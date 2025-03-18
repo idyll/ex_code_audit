@@ -23,7 +23,11 @@ defmodule ExCodeAudit.Analyzers.LiveView do
   @impl true
   def check(file_path, file_content, config) do
     # Skip if not a LiveView or LiveComponent file or special app_web.ex file
-    if is_live_file?(file_path, file_content) && !is_special_web_file?(file_path) do
+    is_live = is_live_file?(file_path, file_content)
+    is_special = is_special_web_file?(file_path)
+
+
+    if is_live && !is_special do
       violations = []
 
       # Check for required sections
@@ -87,13 +91,88 @@ defmodule ExCodeAudit.Analyzers.LiveView do
     # Find all section labels in the file
     found_sections = find_sections(file_content)
 
-    # Check for missing required sections
-    missing_sections = required_sections -- found_sections
+    # Determine which sections are actually needed based on functions present
+    needed_sections = get_needed_sections(file_content)
+
+    # Only require sections that have corresponding functions in the file
+    applicable_sections =
+      required_sections
+      |> Enum.filter(fn section ->
+        section_type = section_to_type(section)
+        section_type in needed_sections
+      end)
+
+    # Check for missing required sections that are actually needed
+    missing_sections = applicable_sections -- found_sections
 
     if Enum.empty?(missing_sections) do
       []
     else
       [create_missing_sections_violation(file_path, missing_sections, config)]
+    end
+  end
+
+  # Determine which sections are needed based on functions present in the file
+  defp get_needed_sections(content) do
+    sections = []
+
+    # Check for lifecycle functions
+    lifecycle_patterns = [
+      ~r/def\s+mount\(/,
+      ~r/def\s+update\(/,
+      ~r/def\s+init\(/,
+      ~r/def\s+terminate\(/,
+      ~r/def\s+on_mount\(/,
+      ~r/def\s+handle_params\(/,
+      ~r/def\s+handle_continue\(/
+    ]
+
+    sections =
+      if Enum.any?(lifecycle_patterns, &Regex.match?(&1, content)) do
+        [:lifecycle | sections]
+      else
+        sections
+      end
+
+    # Check for event handler functions
+    event_patterns = [
+      ~r/def\s+handle_event\(/,
+      ~r/def\s+handle_info\(/,
+      ~r/def\s+handle_call\(/,
+      ~r/def\s+handle_cast\(/
+    ]
+
+    sections =
+      if Enum.any?(event_patterns, &Regex.match?(&1, content)) do
+        [:events | sections]
+      else
+        sections
+      end
+
+    # Check for rendering functions
+    rendering_patterns = [
+      ~r/def\s+render\(/,
+      ~r/def\s+component\(/,
+      ~r/def\s+page_title\(/
+    ]
+
+    sections =
+      if Enum.any?(rendering_patterns, &Regex.match?(&1, content)) do
+        [:rendering | sections]
+      else
+        sections
+      end
+
+    sections
+  end
+
+  # Map section name to a function type
+  defp section_to_type(section) do
+    case String.upcase(section) do
+      "LIFECYCLE CALLBACKS" -> :lifecycle
+      "EVENT HANDLERS" -> :events
+      "RENDERING" -> :rendering
+      _ -> :other
     end
   end
 
@@ -124,9 +203,11 @@ defmodule ExCodeAudit.Analyzers.LiveView do
       ~r/def\s+handle_event\(/
     ]
 
-    Enum.any?(live_view_patterns, fn pattern ->
+    result = Enum.any?(live_view_patterns, fn pattern ->
       Regex.match?(pattern, content)
     end)
+
+    result
   end
 
   # Check if a file is a LiveComponent
@@ -145,9 +226,10 @@ defmodule ExCodeAudit.Analyzers.LiveView do
 
   # Find all section labels in the file
   defp find_sections(content) do
-    # Look for section labels in comments
-    # Example: # LIFECYCLE CALLBACKS
-    section_pattern = ~r/^\s*#\s*([A-Z][A-Z\s]+[A-Z])$/m
+    # Look for section labels in comments with any amount of leading whitespace
+    # Example: # LIFECYCLE CALLBACKS or # ------ LIFECYCLE CALLBACKS ------
+    # Also matches indented section headers like "  # LIFECYCLE CALLBACKS"
+    section_pattern = ~r/^\s*#\s*(?:-*\s*)?([A-Z][A-Z\s]+[A-Z])(?:\s*-*)?$/m
 
     Regex.scan(section_pattern, content)
     |> Enum.map(fn [_, section] -> String.trim(section) end)
@@ -155,10 +237,13 @@ defmodule ExCodeAudit.Analyzers.LiveView do
 
   # Create a violation for missing section labels
   defp create_missing_sections_violation(file_path, missing_sections, config) do
-    sections_list = Enum.join(missing_sections, ", ")
+    # Format each section name with quotes
+    formatted_sections = Enum.map(missing_sections, fn section -> "\"#{section}\"" end)
+    # Join them with commas and spaces
+    sections_list = Enum.join(formatted_sections, ", ")
 
     message = "LiveView missing labeled sections"
-    details = "Missing sections: [\"#{sections_list}\"]"
+    details = "Missing sections: [#{sections_list}]"
 
     Violation.new(
       "#{message}\n   #{details}",

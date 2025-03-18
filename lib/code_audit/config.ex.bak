@@ -336,4 +336,21 @@ defmodule ExCodeAudit.Config do
   end
 
   # Get files to scan based on the configuration
+  defp get_files(config) do
+    # If specific files are provided, use them
+    files =
+      case Map.get(config, :files) do
+        nil ->
+          # Default to scanning lib and test directories
+          find_files(Map.get(config, :scan_paths, ["lib", "test"]))
+
+        files when is_list(files) ->
+          # Use the provided list of files
+          files
+      end
+
+    # Filter files based on excluded paths
+    exclude_paths = Map.get(config, :exclude_paths, [])
+    Enum.reject(files, &matches_excluded?(&1, exclude_paths))
+  end
 end

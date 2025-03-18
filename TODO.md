@@ -97,16 +97,21 @@
 - [x] Add compiler warnings integration
   - [x] Run compiler with --warnings-as-errors
   - [x] Include warnings in audit results
-- [ ] Add comprehensive documentation
-  - [ ] Usage examples
-  - [ ] Configuration options
-  - [ ] Rule descriptions
+- [x] Implement auto-fix capability
+  - [x] Add `--fix` option to automatically repair issues
+  - [x] Fix missing LiveView section labels
+  - [x] Add `--preview` flag to show changes without applying them
+  - [x] Add `--force` flag to recreate headers even if they exist
+- [x] Add comprehensive documentation
+  - [x] Usage examples
+  - [x] Configuration options
+  - [x] Rule descriptions
 
 #### Technical Details
 
 - [ ] Follow GitHub Actions annotation format
 - [x] Create proper exit codes based on violation severity
-- [ ] Generate complete HexDocs
+- [x] Generate complete documentation
 
 ### Phase 7: Testing and Release
 
