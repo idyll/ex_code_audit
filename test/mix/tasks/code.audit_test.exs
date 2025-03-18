@@ -1,10 +1,6 @@
 defmodule Mix.Tasks.Code.AuditTest do
   use ExUnit.Case
 
-  import ExUnit.CaptureIO
-
-  alias Mix.Tasks.Code.Audit
-
   setup do
     # Create a temporary directory for test files
     tmp_dir = System.tmp_dir!() |> Path.join("ex_code_audit_test_#{:rand.uniform(1000)}")

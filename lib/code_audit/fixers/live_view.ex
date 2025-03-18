@@ -51,119 +51,70 @@ defmodule ExCodeAudit.Fixers.LiveView do
   - `{:error, reason}` - If the fix could not be applied
   - `{:ok, preview}` - If preview option is true, returns a preview of the changes
   """
-  @spec fix_sections(String.t(), [String.t()], keyword()) ::
-          {:ok, String.t()} | {:error, String.t()} | {:ok, String.t(), String.t()}
-  def fix_sections(content, sections, opts \\ []) do
+  @spec fix_sections(String.t(), [String.t()], keyword() | String.t()) ::
+          {:ok, String.t()} | {:error, String.t()} | {:ok, String.t()}
+  def fix_sections(content, sections, opts \\ [])
+
+  def fix_sections(content, sections, file_path) when is_binary(file_path) do
+    fix_sections(content, sections, [file_path: file_path])
+  end
+
+  def fix_sections(content, sections, opts) when is_list(opts) do
     force = Keyword.get(opts, :force, false)
     preview = Keyword.get(opts, :preview, false)
     file_path = Keyword.get(opts, :file_path, nil)
 
     # Find existing sections in the content
-    existing_sections = find_sections(content)
+    existing_sections = find_sections(content, nil)
+
+    # Filter sections to only the ones we care about
+    existing_relevant_sections = Enum.filter(existing_sections, fn section ->
+      String.upcase(section) in Enum.map(sections, &String.upcase/1)
+    end)
 
     # Check if all requested sections already exist and we're not in force mode
-    if !force && Enum.all?(sections, fn section -> section in existing_sections end) do
-      if preview do
-        {:ok, "No changes needed - all required sections already exist."}
-      else
-        {:error, "All required sections already exist. Use --force to recreate them."}
-      end
+    if !force && Enum.count(existing_relevant_sections) == Enum.count(sections) do
+      {:error, "All required sections already exist" <> if(file_path, do: " in #{file_path}", else: "")}
     else
-      # Split the content into function blocks for analysis
-      blocks = split_into_blocks(content)
-
-      # Insert sections at appropriate locations
-      try do
-        # If force is true, we want to add all sections
-        # If force is false, we only add missing sections
-        sections_to_add =
-          if force do
-            sections
-          else
-            sections -- existing_sections
-          end
-
-        {fixed_content, preview_text} =
-          insert_sections(content, blocks, sections_to_add, file_path)
-
-        if preview do
-          {:ok, preview_text}
+      # Only add sections that don't exist (unless force is true)
+      sections_to_add =
+        if force do
+          sections
         else
-          {:ok, fixed_content}
+          sections -- existing_relevant_sections
         end
-      rescue
-        e ->
-          {:error, "Failed to fix file: #{Exception.message(e)}"}
+
+      # Apply the changes
+      {modified_content, preview_text} = insert_sections(content, sections_to_add, file_path)
+
+      if preview do
+        {:ok, preview_text}
+      else
+        {:ok, modified_content}
       end
     end
   end
 
   # Find existing section labels in the content
-  defp find_sections(content) do
+  defp find_sections(content, sections) do
     # Match section labels in comments with any amount of leading whitespace
     # Example: # SECTION NAME or # ----- SECTION NAME -----
     # Also matches indented section headers like "  # LIFECYCLE CALLBACKS"
     section_pattern = ~r/^\s*#\s*(?:-*\s*)?([A-Z][A-Z\s]+[A-Z])(?:\s*-*)?$/m
 
-    Regex.scan(section_pattern, content)
-    |> Enum.map(fn [_, section] -> String.trim(section) end)
-  end
+    found_sections =
+      Regex.scan(section_pattern, content)
+      |> Enum.map(fn [_, section] -> String.trim(section) end)
 
-  # Split the content into blocks based on function definitions
-  defp split_into_blocks(content) do
-    # Pattern to match function definitions
-    function_pattern = ~r/^\s*(def|defp)\s+([a-zA-Z0-9_?!]+)/m
-    lines = String.split(content, "\n")
-
-    # Find all function definitions with their line numbers
-    function_lines =
-      Enum.with_index(lines, 1)
-      |> Enum.filter(fn {line, _idx} ->
-        Regex.match?(function_pattern, line)
-      end)
-      |> Enum.map(fn {line, idx} ->
-        [_, type, name] = Regex.run(function_pattern, line)
-        {idx, String.trim(name), type}
-      end)
-
-    # Group functions by type
-    group_functions(function_lines)
-  end
-
-  # Group functions into categories
-  defp group_functions(function_lines) do
-    # Define patterns for each function type
-    lifecycle_functions = ~w(mount update init terminate on_mount handle_params handle_continue)
-    event_functions = ~w(handle_event handle_info handle_call handle_cast)
-    rendering_functions = ~w(render component page_title _)
-
-    # Categorize each function
-    Enum.reduce(function_lines, %{lifecycle: [], events: [], rendering: []}, fn {line_num, name,
-                                                                                 _type},
-                                                                                acc ->
-      cond do
-        name in lifecycle_functions ->
-          Map.update!(acc, :lifecycle, &[{line_num, name} | &1])
-
-        name in event_functions ->
-          Map.update!(acc, :events, &[{line_num, name} | &1])
-
-        name in rendering_functions ->
-          Map.update!(acc, :rendering, &[{line_num, name} | &1])
-
-        true ->
-          acc
-      end
-    end)
-    |> Enum.map(fn {type, funcs} ->
-      # Sort functions by their line position
-      {type, Enum.sort_by(funcs, fn {line_num, _} -> line_num end)}
-    end)
-    |> Map.new()
+    if sections == nil do
+      found_sections
+    else
+      Enum.filter(found_sections, fn section -> section in sections end)
+    end
   end
 
   # Insert sections at appropriate locations
-  defp insert_sections(content, blocks, sections, file_path) do
+  defp insert_sections(content, sections, file_path) do
     lines = String.split(content, "\n")
 
     # Collect all insertion points first, before making any changes
@@ -172,7 +123,7 @@ defmodule ExCodeAudit.Fixers.LiveView do
       |> Enum.map(fn section ->
         section_name = String.upcase(section)
 
-        case find_insertion_line(section, blocks, lines) do
+        case find_insertion_line(section, content) do
           nil -> nil
           {line_idx, indentation} ->
             # Match the indentation of the function that follows this section
@@ -216,25 +167,51 @@ defmodule ExCodeAudit.Fixers.LiveView do
   end
 
   # Find the appropriate line to insert a section
-  defp find_insertion_line(section, blocks, lines) do
-    section_type = section_to_type(section)
-    functions = Map.get(blocks, section_type, [])
+  defp find_insertion_line(section, content) do
+    case section do
+      "LIFECYCLE CALLBACKS" ->
+        # Find the first lifecycle function (mount, update, etc.)
+        patterns = [
+          ~r/def\s+mount\(/m,
+          ~r/def\s+update\(/m,
+          ~r/def\s+init\(/m,
+          ~r/def\s+terminate\(/m,
+          ~r/def\s+on_mount\(/m,
+          ~r/def\s+handle_params\(/m,
+          ~r/def\s+handle_continue\(/m
+        ]
 
-    case functions do
-      [] ->
-        # No functions of this type - no need to add section
+        find_first_match(content, patterns)
+
+      "EVENT HANDLERS" ->
+        # Find the first event handler function
+        patterns = [
+          ~r/def\s+handle_event\(/m
+        ]
+
+        find_first_match(content, patterns)
+
+      "INFO HANDLERS" ->
+        # Find the first info handler function
+        patterns = [
+          ~r/def\s+handle_info\(/m
+        ]
+
+        find_first_match(content, patterns)
+
+      "RENDERING" ->
+        # Find the first rendering function (render, component, etc.)
+        patterns = [
+          ~r/def\s+render\(/m,
+          ~r/def\s+component\(/m,
+          ~r/def\s+page_title\(/m
+        ]
+
+        find_first_match(content, patterns)
+
+      _ ->
+        # Default to the end of the file for unknown sections
         nil
-
-      [{line_num, _name} | _] ->
-        # Always insert directly before the function definition
-        # The line_num is 1-indexed, so we need to subtract 1 to get the array index
-        line_idx = line_num - 1
-
-        # Extract indentation of the function line to match it
-        function_line = Enum.at(lines, line_idx)
-        indentation = get_indentation(function_line)
-
-        {line_idx, indentation}
     end
   end
 
@@ -280,13 +257,22 @@ defmodule ExCodeAudit.Fixers.LiveView do
     |> Enum.join("\n")
   end
 
-  # Map section name to a function type
-  defp section_to_type(section) do
-    case String.upcase(section) do
-      "LIFECYCLE CALLBACKS" -> :lifecycle
-      "EVENT HANDLERS" -> :events
-      "RENDERING" -> :rendering
-      _ -> :other
-    end
+  # Find the first matching line for a list of patterns
+  defp find_first_match(content, patterns) do
+    lines = String.split(content, "\n")
+
+    # Try each pattern until we find a match
+    Enum.reduce_while(patterns, nil, fn pattern, _acc ->
+      line_with_index = Enum.with_index(lines)
+                       |> Enum.find(fn {line, _idx} -> Regex.match?(pattern, line) end)
+
+      case line_with_index do
+        {line, idx} ->
+          indentation = get_indentation(line)
+          {:halt, {idx, indentation}}
+        nil ->
+          {:cont, nil}
+      end
+    end)
   end
 end

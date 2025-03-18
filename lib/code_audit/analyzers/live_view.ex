@@ -136,15 +136,24 @@ defmodule ExCodeAudit.Analyzers.LiveView do
 
     # Check for event handler functions
     event_patterns = [
-      ~r/def\s+handle_event\(/,
-      ~r/def\s+handle_info\(/,
-      ~r/def\s+handle_call\(/,
-      ~r/def\s+handle_cast\(/
+      ~r/def\s+handle_event\(/
     ]
 
     sections =
       if Enum.any?(event_patterns, &Regex.match?(&1, content)) do
         [:events | sections]
+      else
+        sections
+      end
+
+    # Check for info handler functions
+    info_patterns = [
+      ~r/def\s+handle_info\(/
+    ]
+
+    sections =
+      if Enum.any?(info_patterns, &Regex.match?(&1, content)) do
+        [:info | sections]
       else
         sections
       end
@@ -171,6 +180,7 @@ defmodule ExCodeAudit.Analyzers.LiveView do
     case String.upcase(section) do
       "LIFECYCLE CALLBACKS" -> :lifecycle
       "EVENT HANDLERS" -> :events
+      "INFO HANDLERS" -> :info
       "RENDERING" -> :rendering
       _ -> :other
     end

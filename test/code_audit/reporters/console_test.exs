@@ -22,10 +22,10 @@ defmodule ExCodeAudit.Reporters.ConsoleTest do
           Console.report([violation], options)
         end)
 
-      # Basic assertions to ensure it worked
-      assert String.contains?(output, "WARNING:")
+      # Updated assertions to match the new format
+      assert String.contains?(output, "warning:")
       assert String.contains?(output, "Test message")
-      assert String.contains?(output, "File: test/file.ex")
+      assert String.contains?(output, "└─ test/file.ex")  # New location format
       assert String.contains?(output, "Rule: test_rule")
     end
 
@@ -46,10 +46,10 @@ defmodule ExCodeAudit.Reporters.ConsoleTest do
           Console.report([violation], options)
         end)
 
-      # Basic assertions to ensure it worked
-      assert String.contains?(output, "ERROR:")
+      # Updated assertions to match the new format
+      assert String.contains?(output, "error:")
       assert String.contains?(output, "Test message")
-      assert String.contains?(output, "File: test/file.ex")
+      assert String.contains?(output, "└─ test/file.ex")  # New location format
       assert String.contains?(output, "Rule: test_rule")
     end
   end

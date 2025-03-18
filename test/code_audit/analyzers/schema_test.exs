@@ -96,6 +96,7 @@ defmodule ExCodeAudit.Analyzers.SchemaTest do
       config = %{
         path: "lib/my_app/schema/*.ex",
         violation_level: :error,
+        check_repo_calls: true,
         excludes: ["Repo."]
       }
 
@@ -135,6 +136,56 @@ defmodule ExCodeAudit.Analyzers.SchemaTest do
 
       # Test with a schema file in the correct location
       assert Schema.check("lib/my_app/schema/user.ex", content, config) == []
+    end
+
+    test "is_schema_named_module? identifies schema modules at non-standard paths" do
+      file_path = "lib/ex_code_audit/accounts/user.ex"
+      content = """
+      defmodule ExCodeAudit.Accounts.User do
+        use Ecto.Schema
+
+        schema "users" do
+          field :name, :string
+        end
+
+        def get_by_id(id) do
+          Repo.get(__MODULE__, id)
+        end
+      end
+      """
+
+      assert ExCodeAudit.Analyzers.Schema.is_schema_named_module?(file_path, content)
+    end
+
+    test "schema analyzer allows repo calls in schema named modules" do
+      file_path = "lib/ex_code_audit/accounts/user.ex"
+      content = """
+      defmodule ExCodeAudit.Accounts.User do
+        use Ecto.Schema
+
+        schema "users" do
+          field :name, :string
+        end
+
+        def get_by_id(id) do
+          Repo.get(__MODULE__, id)
+        end
+      end
+      """
+
+      config = %{
+        violation_level: :error,
+        path: "lib/:app_name/schema/*.ex",
+        check_repo_calls: true,
+        excludes: ["Repo."]
+      }
+
+      violations = ExCodeAudit.Analyzers.Schema.check(file_path, content, config)
+
+      # Only the location violation should be reported, not repo calls
+      assert length(violations) == 1
+      [violation] = violations
+      assert violation.rule == :schema_location
     end
   end
 end

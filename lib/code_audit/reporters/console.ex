@@ -42,30 +42,83 @@ defmodule ExCodeAudit.Reporters.Console do
   # Print a single violation
   defp print_violation(violation, options) do
     # Format the level indicator with color
-    level_indicator =
+    {level_text, level_color} =
       case violation.level do
-        :error -> IO.ANSI.red() <> "❌ ERROR: " <> IO.ANSI.reset()
-        :warning -> IO.ANSI.yellow() <> "⚠️ WARNING: " <> IO.ANSI.reset()
+        :error -> {"error", IO.ANSI.red()}
+        :warning -> {"warning", IO.ANSI.yellow()}
       end
 
-    # Print the main violation message
-    IO.puts("#{level_indicator}#{violation.message}")
+    # Extract file and line information
+    file = violation.file
+    line = violation.line
 
-    # Print the file location
-    file_line =
-      if violation.line do
-        "#{violation.file}:#{violation.line}"
-      else
-        violation.file
+    # Extract the first line of the message
+    {first_line, rest} =
+      case String.split(violation.message, "\n", parts: 2) do
+        [first, rest] -> {first, rest}
+        [only] -> {only, nil}
       end
 
-    IO.puts("   File: #{file_line}")
+    # Print the first line with level indicator
+    IO.puts("    #{level_color}#{level_text}: #{first_line}#{IO.ANSI.reset()}")
+
+    # Add the location indicator lines if we have line information
+    if line do
+      # Add vertical pipe indicator
+      IO.puts("    │")
+
+      # Try to read the file and show the specific line
+      case File.read(file) do
+        {:ok, content} ->
+          lines = String.split(content, "\n")
+          if line > 0 && line <= length(lines) do
+            code_line = Enum.at(lines, line - 1)
+
+            # Trim whitespace from the beginning of the line to match compiler output format
+            _indentation_size = String.length(code_line) - String.length(String.trim_leading(code_line))
+            trimmed_code_line = String.trim_leading(code_line)
+
+            # Print the line number and code
+            IO.puts(" #{line} │ #{trimmed_code_line}")
+
+            # Print the indicator under the line
+            # For simplicity, we just underline a portion of the line
+            indicator_position = min(String.length(trimmed_code_line), 6)
+            IO.puts("    │ #{String.duplicate(" ", indicator_position)}#{level_color}^#{IO.ANSI.reset()}")
+          end
+        _ ->
+          # If we can't read the file, skip showing the line
+          :ok
+      end
+
+      # Add the source location line
+      IO.puts("    │")
+      IO.puts("    └─ #{file}:#{line}")
+    else
+      # Add the file location without line number
+      IO.puts("    │")
+      IO.puts("    └─ #{file}")
+    end
+
+    # If there are additional lines in the message, print them
+    if rest && rest != "" do
+      # Format additional lines, respecting indentation
+      additional_lines = String.split(rest, "\n")
+
+      Enum.each(additional_lines, fn line ->
+        # Preserve existing formatting for additional lines
+        # Most messages use "   " prefix for additional lines
+        if String.starts_with?(line, "   ") do
+          IO.puts(line)
+        else
+          IO.puts("   #{line}")
+        end
+      end)
+    end
 
     # Print additional information if available and in verbose mode
-    if get_option(options, :verbose, false) do
-      if violation.rule do
-        IO.puts("   Rule: #{violation.rule}")
-      end
+    if get_option(options, :verbose, false) && violation.rule do
+      IO.puts("   Rule: #{violation.rule}")
     end
 
     # Add a blank line after each violation
